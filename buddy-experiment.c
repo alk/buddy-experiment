@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <stdint.h>
@@ -20,6 +21,11 @@ struct block {
 	struct block **pprev;
 };
 
+struct free_block {
+	struct block parent;
+	int order;
+};
+
 #define MIN_ORDER 4
 #define MAX_ORDER 20
 
@@ -29,6 +35,8 @@ struct block {
 struct block *blocks_orders[MAX_ORDER+1];
 
 static int max_order_blocks_alloced;
+
+#define USED_MARKER ((struct block *)1)
 
 static
 void *allocate_max_order_block(void)
@@ -41,9 +49,42 @@ void *allocate_max_order_block(void)
 		perror("posix_memalign");
 		abort();
 	}
-	rv->next = 0;
+	memset(rv, 0xcc, 1 << MAX_ORDER);
+	rv->next = USED_MARKER;
+	rv->pprev = 0;
 	max_order_blocks_alloced++;
 	return rv + 1;
+}
+
+static
+void enqueue_free(struct block *ptr, int order)
+{
+	assert(ptr->next == USED_MARKER);
+	assert(ptr->pprev == 0);
+	struct block *old_front = blocks_orders[order];
+	assert(old_front != USED_MARKER);
+	ptr->next = old_front;
+	ptr->pprev = blocks_orders + order;
+	if (old_front) {
+		assert(old_front->pprev == blocks_orders + order);
+		old_front->pprev = &ptr->next;
+	}
+	((struct free_block *)ptr)->order = order;
+	blocks_orders[order] = ptr;
+}
+
+static
+void dequeue_free(struct block *ptr)
+{
+	assert(ptr->pprev != 0);
+	assert(*(ptr->pprev) == ptr);
+	assert(ptr->next != (struct block *)1);
+	struct block *next = ptr->next;
+	if (next)
+		next->pprev = ptr->pprev;
+	*(ptr->pprev) = next;
+	ptr->next = USED_MARKER;
+	ptr->pprev = 0;
 }
 
 static
@@ -57,21 +98,26 @@ void *allocate_block(int order)
 
 	p = blocks_orders[order];
 	if (p) {
-		struct block *next = blocks_orders[order] = p->next;
-		if (next)
-			next->pprev = blocks_orders + order;
-		p->next = (void *)1;
-		return p + 1;
+		assert(p->pprev == blocks_orders + order);
+		dequeue_free(p);
+		assert(((struct free_block *)p)->order == order);
+		goto out;
 	}
 
 	if (order == MAX_ORDER)
 		return allocate_max_order_block();
 
+	/*
+         * struct block *blocks_orders_snapshot[MAX_ORDER+1];
+	 * memcpy(blocks_orders_snapshot, blocks_orders, sizeof(blocks_orders));
+         */
+
 	p = (struct block *)allocate_block(order+1) - 1;
 	buddy = (struct block *)((char *)p + (1 << order));
-	buddy->next = 0;	/* NOTE: block_orders[order] is 0 */
-	buddy->pprev = blocks_orders + order;
-	blocks_orders[order] = buddy;
+	buddy->next = USED_MARKER;
+	buddy->pprev = 0;
+	enqueue_free(buddy, order);
+out:
 	return p + 1;
 }
 
@@ -79,31 +125,22 @@ static
 void free_block(void *ptr, int order)
 {
 	struct block *p = (struct block *)ptr - 1;
-	assert(p->next == (struct block *)1);
+	assert(p->next == USED_MARKER);
 	if (order < MAX_ORDER) {
 		struct block *buddy = (struct block *)((intptr_t)p ^ (1 << order));
-		if ((intptr_t)buddy->next & 1) {
-			/* if buddy is free as well, we should combine
+		if (buddy->next != USED_MARKER && (((struct free_block *)buddy)->order == order)) {
+			/* if buddy is free as well with same order, we should combine
 			 * with it, by first unlinking it from
 			 * free-list */
-			struct block *next = *(buddy->pprev) = buddy->next;
-			if (next)
-				next->pprev = buddy->pprev;
+			dequeue_free(buddy);
 			if (buddy > p)
 				buddy = p;
-			else
-				buddy->next = (struct block *)1;
 			free_block(buddy+1, order+1);
 			return;
 		}
 	}
 
-	struct block *next = blocks_orders[order];
-	if (next)
-		next->pprev = &p->next;
-	p->next = next;
-	p->pprev = blocks_orders + order;
-	blocks_orders[order] = p;
+	enqueue_free(p, order);
 }
 
 #define CHUNKS_COUNT 6
@@ -121,10 +158,6 @@ struct chunked_blob {
 	void *other_chunks[CHUNKS_COUNT-1];
 };
 
-#define BLOBS_COUNT (1024*1024)
-
-struct chunked_blob *blobs[BLOBS_COUNT];
-
 /* We need to find at most CHUNKS_COUNT powers of two that cover size
  * + all required metadata (chunked_blob, block headers) with minimal
  * total size. This can be greatly improved, but for now it can remain
@@ -133,6 +166,7 @@ static
 void value_size_to_block_sizes(unsigned size, int orders[CHUNKS_COUNT])
 {
 	unsigned original_size = size;
+	(void) original_size;
 	unsigned thing;
 	int i;
 	/* we'll need at least one block and exactly one chunked_blob
@@ -168,7 +202,7 @@ void value_size_to_block_sizes(unsigned size, int orders[CHUNKS_COUNT])
 skip_upper_bound:
 	i = 0;
 	double prop = (double)(thing-size)/thing;
-	printf("thing/original_size: %f, %d\n", (double)(thing - original_size) / thing, original_size);
+	/* printf("thing/original_size: %f, %d\n", (double)(thing - original_size) / thing, original_size); */
 	assert(prop >= 0 && prop < 1.0);
 	while (thing) {
 		int order = sizeof(unsigned) * 8 - __builtin_clz(thing) - 1;
@@ -265,39 +299,113 @@ void free_blob(struct chunked_blob *blob)
 static int usefully_allocated;
 static int useful_allocations_count;
 
-int main(void)
+float max_waste;
+
+static
+void print_current_stats(void)
+{
+	int total_ram = max_order_blocks_alloced * (1U << MAX_ORDER);
+	float waste = (float)(total_ram - usefully_allocated) * 100 / total_ram;
+	if (waste > max_waste)
+		max_waste = waste;
+	printf("got from OS: %d\nApp allocated: %d\nAllocations count:%d\nwaste %f %f %%\n",
+	       total_ram,
+	       usefully_allocated,
+	       useful_allocations_count,
+	       waste, max_waste);
+}
+
+#define BLOBS_COUNT (1024*1024)
+
+struct chunked_blob *blobs[BLOBS_COUNT];
+
+int minimal_size = 128;
+int size_range = 65536;
+
+static
+int parse_int(int *place, char *arg, int min, int max)
+{
+	char *endptr;
+	long val = strtol(arg, &endptr, 10);
+	if (!*arg || *endptr)
+		return 0;
+	if (val < min || val > max)
+		return 0;
+	*place = val;
+	return 1;
+}
+
+int main(int argc, char **argv)
 {
 	int i;
 	struct timeval tv;
 	int rv;
+
+	while ((i = getopt(argc, argv, "m:r:")) != -1) {
+		switch (i) {
+		case 'm':
+			if (!parse_int(&minimal_size, optarg, 128, 2*1024*1024)) {
+				fprintf(stderr, "invalid minimal_size\n");
+				return 1;
+			}
+			break;
+		case 'r':
+			if (!parse_int(&size_range, optarg, 1, 20*1024*1024)) {
+				fprintf(stderr, "invalid size_range\n");
+				return 1;
+			}
+			break;
+		case '?':
+			fprintf(stderr, "invalid option\n");
+			return 1;
+		default:
+			abort();
+		}
+	}
+
+	printf("minimal_size = %d\n", minimal_size);
+	printf("size_range = %d\n", size_range);
 
 	rv = gettimeofday(&tv, 0);
 	if (rv) {
 		perror("gettimeofday");
 		abort();
 	}
-	srandom((unsigned)tv.tv_sec ^ (unsigned)tv.tv_usec);
-	/* srandom(0); */
+	/* srandom((unsigned)tv.tv_sec ^ (unsigned)tv.tv_usec); */
+	srandom(0);
 
-	for (i = 0; i < BLOBS_COUNT; i++) {
-		unsigned size = 128 + random() % (128*1024);
-		allocate_blob(size);
-		usefully_allocated += size;
-		useful_allocations_count++;
-		if (usefully_allocated >= (ALLOCATE_UNTIL_MB * 1048576))
-			break;
-	}
-	if (i >= BLOBS_COUNT) {
-		fprintf(stderr, "too successful allocation!\n");
-		return 1;
-	}
+	for (int times = 100000000; times >= 0; times--) {
+		for (i = 0; i < BLOBS_COUNT; i++) {
+			if (blobs[i]) {
+				continue;
+			}
+			unsigned size = minimal_size + random() % size_range;
+			blobs[i] = allocate_blob(size);
+			assert(blobs[i]->size == size);
+			usefully_allocated += size;
+			useful_allocations_count++;
+			if (usefully_allocated >= (ALLOCATE_UNTIL_MB * 1048576))
+				break;
+		}
 
-	int total_ram = max_order_blocks_alloced * (1U << MAX_ORDER);
-	printf("got from OS: %d\nApp allocated: %d\nAllocations count:%d\nwaste %f %%\n",
-	       total_ram,
-	       usefully_allocated,
-	       useful_allocations_count,
-	       (float)(total_ram - usefully_allocated) * 100 / total_ram);
+		if (i >= BLOBS_COUNT) {
+			fprintf(stderr, "too successful allocation!\n");
+			return 1;
+		}
+
+		printf("stats:\n");
+		print_current_stats();
+		printf("\n\n");
+
+		for (; i >= 0; i--) {
+			if (blobs[i] && random() % 1000 < 2) {
+				usefully_allocated -= blobs[i]->size;
+				useful_allocations_count--;
+				free_blob(blobs[i]);
+				blobs[i] = 0;
+			}
+		}
+	}
 
 	return 0;
 }
