@@ -1,2 +1,3 @@
+*.o
+*.s
 /buddy-experiment
-/buddy-experiment.s
