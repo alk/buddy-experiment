@@ -14,7 +14,7 @@ extern void free_blob(void *blob);
 
 extern size_t get_total_allocated_size(void);
 
-#define ALLOCATE_UNTIL_MB 384
+#define ALLOCATE_UNTIL_MB ((900 + 15) / 16 * 16 - 1)
 
 static int usefully_allocated;
 static int useful_allocations_count;
@@ -117,7 +117,7 @@ int main(int argc, char **argv)
 
 		if ((times % 100000) == 0) {
 			for (int k = 0; k < BLOBS_COUNT; k++) {
-				if (!blobs[k]) {
+				if (!blobs[k] || sizes[k] > (minimal_size + size_range / 2)) {
 					continue;
 				}
 				unsigned old_size = sizes[k];
