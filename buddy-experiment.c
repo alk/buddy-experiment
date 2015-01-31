@@ -28,20 +28,31 @@ struct free_block {
 
 /* 4 is not enough for 64 bit arches */
 #define MIN_ORDER 5
-#define MAX_ORDER 20
+#define MAX_ORDER 24
 
 /*
  * This is heads of free lists for various block order sizes
  */
 struct block *blocks_orders[MAX_ORDER+1];
 
+int per_order_counts[MAX_ORDER+1];
+
 static int max_order_blocks_alloced;
 
+size_t get_total_allocated_size(void)
+{
+	return max_order_blocks_alloced * ((size_t)1 << MAX_ORDER);
+}
+
 #define USED_MARKER ((struct block *)1)
+
+void validate_all_chains(void);
 
 static
 void *allocate_max_order_block(void)
 {
+	validate_all_chains();
+
 	struct block *rv;
 	int error;
 	error = posix_memalign((void **)&rv, 1 << MAX_ORDER, 1 << MAX_ORDER);
@@ -72,6 +83,7 @@ void enqueue_free(struct block *ptr, int order)
 	}
 	((struct free_block *)ptr)->order = order;
 	blocks_orders[order] = ptr;
+	per_order_counts[order]++;
 }
 
 static
@@ -86,6 +98,10 @@ void dequeue_free(struct block *ptr)
 	*(ptr->pprev) = next;
 	ptr->next = USED_MARKER;
 	ptr->pprev = 0;
+
+	int order = ((struct free_block *)ptr)->order;
+	assert(MIN_ORDER <= order && order <= MAX_ORDER);
+	per_order_counts[order]--;
 }
 
 static
@@ -295,120 +311,20 @@ void free_blob(struct chunked_blob *blob)
  * }
  */
 
-#define ALLOCATE_UNTIL_MB 384
-
-static int usefully_allocated;
-static int useful_allocations_count;
-
-float max_waste;
-
-static
-void print_current_stats(void)
+void validate_order_chains(int order)
 {
-	int total_ram = max_order_blocks_alloced * (1U << MAX_ORDER);
-	float waste = (float)(total_ram - usefully_allocated) * 100 / total_ram;
-	if (waste > max_waste)
-		max_waste = waste;
-	printf("got from OS: %d\nApp allocated: %d\nAllocations count:%d\nwaste %f %f %%\n",
-	       total_ram,
-	       usefully_allocated,
-	       useful_allocations_count,
-	       waste, max_waste);
+	struct block *ptr = blocks_orders[order];
+	while (ptr) {
+		struct free_block *freep = (struct free_block *)ptr;
+		ptr = ptr->next;
+		assert(freep->order == order);
+		struct free_block *buddy = (struct free_block *)((intptr_t)freep ^ (1 << order));
+		assert(buddy->parent.next == USED_MARKER || buddy->order < order);
+	}
 }
 
-#define BLOBS_COUNT (1024*1024)
-
-struct chunked_blob *blobs[BLOBS_COUNT];
-
-int minimal_size = 128;
-int size_range = 65536;
-
-static
-int parse_int(int *place, char *arg, int min, int max)
-{
-	char *endptr;
-	long val = strtol(arg, &endptr, 10);
-	if (!*arg || *endptr)
-		return 0;
-	if (val < min || val > max)
-		return 0;
-	*place = val;
-	return 1;
-}
-
-int main(int argc, char **argv)
-{
-	int i;
-	struct timeval tv;
-	int rv;
-
-	while ((i = getopt(argc, argv, "m:r:")) != -1) {
-		switch (i) {
-		case 'm':
-			if (!parse_int(&minimal_size, optarg, 128, 2*1024*1024)) {
-				fprintf(stderr, "invalid minimal_size\n");
-				return 1;
-			}
-			break;
-		case 'r':
-			if (!parse_int(&size_range, optarg, 1, 20*1024*1024)) {
-				fprintf(stderr, "invalid size_range\n");
-				return 1;
-			}
-			break;
-		case '?':
-			fprintf(stderr, "invalid option\n");
-			return 1;
-		default:
-			abort();
-		}
+void validate_all_chains(void) {
+	for (int i = MIN_ORDER; i <= MAX_ORDER; i++) {
+		validate_order_chains(i);
 	}
-
-	printf("minimal_size = %d\n", minimal_size);
-	printf("size_range = %d\n", size_range);
-
-	rv = gettimeofday(&tv, 0);
-	if (rv) {
-		perror("gettimeofday");
-		abort();
-	}
-	/* srandom((unsigned)tv.tv_sec ^ (unsigned)tv.tv_usec); */
-	srandom(0);
-
-	for (int times = 100000000; times >= 0; times--) {
-		for (i = 0; i < BLOBS_COUNT; i++) {
-			if (blobs[i]) {
-				continue;
-			}
-			unsigned size = minimal_size + random() % size_range;
-			blobs[i] = allocate_blob(size);
-			assert(blobs[i]->size == size);
-			usefully_allocated += size;
-			useful_allocations_count++;
-			if (usefully_allocated >= (ALLOCATE_UNTIL_MB * 1048576))
-				break;
-		}
-
-		if (i >= BLOBS_COUNT) {
-			fprintf(stderr, "too successful allocation!\n");
-			return 1;
-		}
-
-		if ((times % 100000) == 0) {
-			printf("stats:\n");
-			print_current_stats();
-			printf("\n\n");
-		}
-
-		for (; i >= 0; i--) {
-			if (blobs[i] && random() % 1000 < 2) {
-				usefully_allocated -= blobs[i]->size;
-				useful_allocations_count--;
-				free_blob(blobs[i]);
-				blobs[i] = 0;
-			}
-		}
-	}
-
-	return 0;
 }
