@@ -394,9 +394,11 @@ int main(int argc, char **argv)
 			return 1;
 		}
 
-		printf("stats:\n");
-		print_current_stats();
-		printf("\n\n");
+		if ((times % 100000) == 0) {
+			printf("stats:\n");
+			print_current_stats();
+			printf("\n\n");
+		}
 
 		for (; i >= 0; i--) {
 			if (blobs[i] && random() % 1000 < 2) {
