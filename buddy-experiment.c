@@ -26,7 +26,8 @@ struct free_block {
 	int order;
 };
 
-#define MIN_ORDER 4
+/* 4 is not enough for 64 bit arches */
+#define MIN_ORDER 5
 #define MAX_ORDER 20
 
 /*
