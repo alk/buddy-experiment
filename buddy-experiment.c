@@ -79,7 +79,7 @@ void dequeue_free(struct block *ptr)
 {
 	assert(ptr->pprev != 0);
 	assert(*(ptr->pprev) == ptr);
-	assert(ptr->next != (struct block *)1);
+	assert(ptr->next != USED_MARKER);
 	struct block *next = ptr->next;
 	if (next)
 		next->pprev = ptr->pprev;
