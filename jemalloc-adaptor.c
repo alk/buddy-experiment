@@ -17,7 +17,7 @@ void maybe_init()
 	}
 }
 
-void *je_allocate_blob(unsigned size)
+void *je_allocate_blob(size_t size)
 {
 	/* maybe_init(); */
 	return malloc(size);
@@ -62,5 +62,5 @@ size_t je_get_total_allocated_size(void)
 allocation_functions jemalloc_fns = {
 	.alloc = je_allocate_blob,
 	.free = je_free_blob,
-	.get_total_allocated_size = .je_get_total_allocated_size
+	.get_total_allocated_size = je_get_total_allocated_size
 };
