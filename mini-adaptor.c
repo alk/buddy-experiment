@@ -37,6 +37,7 @@ size_t mi_get_total_allocated_size(void)
 }
 
 allocation_functions mini_fns = {
+	.name = ".mini",
 	.alloc = mi_alloc,
 	.free = mi_free,
 	.get_total_allocated_size = mi_get_total_allocated_size

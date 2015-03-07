@@ -60,6 +60,7 @@ size_t je_get_total_allocated_size(void)
 }
 
 allocation_functions jemalloc_fns = {
+	.name = "jemalloc",
 	.alloc = je_allocate_blob,
 	.free = je_free_blob,
 	.get_total_allocated_size = je_get_total_allocated_size

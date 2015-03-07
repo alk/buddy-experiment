@@ -77,11 +77,11 @@ allocation_functions *main_fns = &jemalloc_fns;
 int main(int argc, char **argv)
 {
 	int i;
-	struct timeval tv;
 	int rv;
 	bool use_chunky = false;
+	bool randomize = false;
 
-	while ((i = getopt(argc, argv, "m:r:")) != -1) {
+	while ((i = getopt(argc, argv, "m:r:ct:n")) != -1) {
 		switch (i) {
 		case 'm':
 			if (!parse_int(&minimal_size, optarg, 128, 2*1024*1024)) {
@@ -112,6 +112,9 @@ int main(int argc, char **argv)
 				return 1;
 			}
 			break;
+		case 'n':
+			randomize = true;
+			break;
 		case '?':
 			fprintf(stderr, "invalid option\n");
 			return 1;
@@ -123,18 +126,28 @@ int main(int argc, char **argv)
 	if (use_chunky) {
 		chunky_slave_fns = main_fns;
 		main_fns = &chunky_fns;
+		printf("name = chunky:%s\n", chunky_slave_fns->name);
+	} else {
+		printf("name = %s\n", main_fns->name);
 	}
 
 	printf("minimal_size = %d\n", minimal_size);
 	printf("size_range = %d\n", size_range);
 
-	rv = gettimeofday(&tv, 0);
-	if (rv) {
-		perror("gettimeofday");
-		abort();
+	if (randomize) {
+		struct timeval tv;
+		unsigned seed;
+		rv = gettimeofday(&tv, 0);
+		if (rv) {
+			perror("gettimeofday");
+			abort();
+		}
+		seed = (unsigned)tv.tv_sec ^ (unsigned)tv.tv_usec ^ (unsigned)getpid();
+		srandom((unsigned)seed);
+		printf("seeded random with: 0x%08x\n", seed);
+	} else {
+		srandom(0);
 	}
-	/* srandom((unsigned)tv.tv_sec ^ (unsigned)tv.tv_usec); */
-	srandom(0);
 
 	for (int times = 100000000; times >= 0; times--) {
 		for (i = 0; i < BLOBS_COUNT; i++) {

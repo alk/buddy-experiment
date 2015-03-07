@@ -331,6 +331,7 @@ void validate_all_chains(void) {
 }
 
 allocation_functions buddy_fns = {
+	.name = "buddy",
 	.alloc = (void *(*)(size_t))buddy_allocate_blob,
 	.free = (void (*)(void *, size_t))buddy_free_blob,
 	.get_total_allocated_size = buddy_get_total_allocated_size

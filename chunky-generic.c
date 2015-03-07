@@ -30,6 +30,7 @@ static void chunky_free_blob(struct chunked_blob *, size_t);
 static size_t chunky_get_total_allocated_size(void);
 
 allocation_functions chunky_fns = {
+	.name = "chunky_generic:",
 	.alloc = (void *(*)(size_t))chunky_allocate_blob,
 	.free = (void (*)(void *, size_t))chunky_free_blob,
 	.get_total_allocated_size = chunky_get_total_allocated_size

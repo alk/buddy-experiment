@@ -3,6 +3,7 @@
 #include <sys/types.h>
 
 typedef struct {
+	const char *name;
 	void *(*alloc)(size_t);
 	void (*free)(void *, size_t);
 	size_t (*get_total_allocated_size)(void);
