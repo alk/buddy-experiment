@@ -25,9 +25,13 @@ struct chunked_blob {
 	void *other_chunks[CHUNKS_COUNT-1];
 };
 
+static struct chunked_blob *chunky_allocate_blob(size_t);
+static void chunky_free_blob(struct chunked_blob *, size_t);
+static size_t chunky_get_total_allocated_size(void);
+
 allocation_functions chunky_fns = {
-	.alloc = chunky_allocate_blob,
-	.free = chunky_free_blob,
+	.alloc = (void *(*)(size_t))chunky_allocate_blob,
+	.free = (void (*)(void *, size_t))chunky_free_blob,
 	.get_total_allocated_size = chunky_get_total_allocated_size
 };
 
@@ -84,7 +88,24 @@ skip_upper_bound:
 		orders[i] = -1;
 }
 
-struct chunked_blob *chunk_allocate_blob(unsigned size)
+static
+void *chunky_xmalloc(size_t size)
+{
+	void * rv = chunky_slave_fns->alloc(size);
+	if (!rv) {
+		abort();
+	}
+	return rv;
+}
+
+static
+void chunky_xfree(void *p, size_t size)
+{
+	chunky_slave_fns->free(p, size);
+}
+
+static
+struct chunked_blob *chunky_allocate_blob(size_t size)
 {
 	int i;
 	int orders[CHUNKS_COUNT];
@@ -93,12 +114,12 @@ struct chunked_blob *chunk_allocate_blob(unsigned size)
 	unsigned allocated;
 	unsigned subsize;
 
-	blob = chunky_slave_fns->alloc(subsize = (1U << (orders[0])));
+	blob = chunky_xmalloc(subsize = (1U << (orders[0])));
 	allocated = subsize;
 	blob->size = size;
 
 	for (i = 1; i < CHUNKS_COUNT && orders[i] >= 0; i++) {
-		blob->other_chunks[i-1] = xmalloc(subsize = (1U << (orders[i])));
+		blob->other_chunks[i-1] = chunky_xmalloc(subsize = (1U << (orders[i])));
 		allocated += subsize;
 	}
 
@@ -108,7 +129,8 @@ struct chunked_blob *chunk_allocate_blob(unsigned size)
 }
 
 
-void chunky_free_blob(struct chunked_blob *blob)
+static
+void chunky_free_blob(struct chunked_blob *blob, size_t dummy)
 {
 	int i;
 	int orders[CHUNKS_COUNT];
@@ -117,11 +139,12 @@ void chunky_free_blob(struct chunked_blob *blob)
 	for (i = CHUNKS_COUNT-1; i > 0; i--) {
 		if (orders[i] < 0)
 			continue;
-		chunky_slave_fns->free(blob->other_chunks[i-1]);
+		chunky_xfree(blob->other_chunks[i-1], 1U << orders[i]);
 	}
-	chunky_slave_fns->free(blob);
+	chunky_xfree(blob, 1U << orders[0]);
 }
 
+static
 size_t chunky_get_total_allocated_size(void)
 {
 	return chunky_slave_fns->get_total_allocated_size();
