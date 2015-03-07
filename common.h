@@ -1,6 +1,6 @@
 #ifndef COMMON_H
 #define COMMON_H
-#include <stdint.h>
+#include <sys/types.h>
 
 typedef struct {
 	void *(*alloc)(size_t);

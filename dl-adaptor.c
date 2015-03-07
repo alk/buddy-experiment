@@ -1,4 +1,3 @@
-#include <stdint.h>
 #include "common.h"
 
 extern void *dlmalloc(size_t size);
@@ -9,7 +8,7 @@ static size_t dl_total_allocated;
 static
 void *dl_alloc(size_t size)
 {
-	void *rv = dlmalloc(ms, size);
+	void *rv = dlmalloc(size);
 	dl_total_allocated += size;
 	return rv;
 }
@@ -30,5 +29,5 @@ size_t dl_get_total_allocated_size(void)
 allocation_functions dl_fns = {
 	.alloc = dl_alloc,
 	.free = dl_free,
-	.get_total_allocated_size = .dl_get_total_allocated_size
+	.get_total_allocated_size = dl_get_total_allocated_size
 };
