@@ -4,7 +4,7 @@ CFLAGS := -O2 -march=native -ggdb3 -Wall -std=gnu99 -Werror
 # LDFLAGS := -ljemalloc
 
 OBJS := main.o buddy-experiment.o jemalloc-adaptor.o mini-adaptor.o dl-adaptor.o \
-	chunky-generic.o dl-malloc.o minimalloc.c
+	chunky-generic.o dl-malloc.o minimalloc.o
 
 all: buddy-experiment
 
