@@ -7,12 +7,27 @@
 #include <assert.h>
 #include <sys/time.h>
 #include <sys/uio.h>
+#include <stdbool.h>
+#include "common.h"
 
 
-extern void *allocate_blob(unsigned size);
-extern void free_blob(void *blob);
+static
+void *allocate_blob(unsigned size)
+{
+	return main_fns->alloc(size);
+}
 
-extern size_t get_total_allocated_size(void);
+static
+void free_blob(void *blob, size_t size)
+{
+	main_fns->free(blob, size);
+}
+
+static
+size_t get_total_allocated_size(void)
+{
+	return main_fns->get_total_allocated_size();
+}
 
 #define ALLOCATE_UNTIL_MB ((900 + 15) / 16 * 16 - 1)
 
@@ -57,11 +72,14 @@ int parse_int(int *place, char *arg, int min, int max)
 	return 1;
 }
 
+allocation_functions *main_fns = &jemalloc_fns;
+
 int main(int argc, char **argv)
 {
 	int i;
 	struct timeval tv;
 	int rv;
+	bool use_chunky = false;
 
 	while ((i = getopt(argc, argv, "m:r:")) != -1) {
 		switch (i) {
@@ -77,12 +95,34 @@ int main(int argc, char **argv)
 				return 1;
 			}
 			break;
+		case 'c':
+			use_chunky = true;
+			break;
+		case 't':
+			if (strcmp(optarg, "dl") == 0) {
+				main_fns = &dl_fns;
+			} else if (strcmp(optarg, "mini") == 0) {
+				main_fns = &mini_fns;
+			} else if (strcmp(optarg, "je") == 0) {
+				main_fns = &jemalloc_fns;
+			} else if (strcmp(optarg, "buddy") == 0) {
+				main_fns = &buddy_fns;
+			} else {
+				fprintf(stderr, "invalid type: %s\n", optarg);
+				return 1;
+			}
+			break;
 		case '?':
 			fprintf(stderr, "invalid option\n");
 			return 1;
 		default:
 			abort();
 		}
+	}
+
+	if (use_chunky) {
+		chunky_slave_fns = main_fns;
+		main_fns = &chunky_fns;
 	}
 
 	printf("minimal_size = %d\n", minimal_size);
@@ -128,7 +168,7 @@ int main(int argc, char **argv)
 				if (new_size == old_size) {
 					continue;
 				}
-				free_blob(blobs[k]);
+				free_blob(blobs[k], sizes[k]);
 				blobs[k] = 0;
 				usefully_allocated -= old_size;
 				useful_allocations_count--;
@@ -151,7 +191,7 @@ int main(int argc, char **argv)
 			if (blobs[i] && random() % 1000 < 5) {
 				usefully_allocated -= sizes[i];
 				useful_allocations_count--;
-				free_blob(blobs[i]);
+				free_blob(blobs[i], sizes[i]);
 				blobs[i] = 0;
 			}
 		}

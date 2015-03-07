@@ -162,7 +162,7 @@ void memchk(void *_p, unsigned char value, size_t orig_len)
 }
 
 
-void free_blob(struct chunked_blob *blob)
+void free_blob(struct chunked_blob *blob, size_t _unused)
 {
 	int i;
 	int orders[CHUNKS_COUNT];

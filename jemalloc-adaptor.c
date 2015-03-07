@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <jemalloc/jemalloc.h>
+#include "common.h"
 
 static bool inited;
 static void do_init(void);
@@ -16,13 +17,13 @@ void maybe_init()
 	}
 }
 
-void *allocate_blob(unsigned size)
+void *je_allocate_blob(unsigned size)
 {
 	/* maybe_init(); */
 	return malloc(size);
 }
 
-void free_blob(void *blob)
+void je_free_blob(void *blob, size_t _unused)
 {
 	/* maybe_init(); */
 	return free(blob);
@@ -42,7 +43,7 @@ static void do_init(void)
 	}
 }
 
-size_t get_total_allocated_size(void)
+size_t je_get_total_allocated_size(void)
 {
 	maybe_init();
 
@@ -58,3 +59,8 @@ size_t get_total_allocated_size(void)
 	return rv;
 }
 
+allocation_functions jemalloc_fns = {
+	.alloc = je_allocate_blob,
+	.free = je_free_blob,
+	.get_total_allocated_size = .je_get_total_allocated_size
+};

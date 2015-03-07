@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <sys/time.h>
 #include <sys/uio.h>
+#include "common.h"
 
 /*
  * Block starts with following struct.
@@ -39,7 +40,7 @@ int per_order_counts[MAX_ORDER+1];
 
 static int max_order_blocks_alloced;
 
-size_t get_total_allocated_size(void)
+size_t buddy_get_total_allocated_size(void)
 {
 	return max_order_blocks_alloced * ((size_t)1 << MAX_ORDER);
 }
@@ -230,7 +231,7 @@ skip_upper_bound:
 		orders[i] = -1;
 }
 
-struct chunked_blob *allocate_blob(unsigned size)
+struct chunked_blob *buddy_allocate_blob(unsigned size)
 {
 	int i;
 	int orders[CHUNKS_COUNT];
@@ -247,7 +248,7 @@ struct chunked_blob *allocate_blob(unsigned size)
 }
 
 
-void free_blob(struct chunked_blob *blob)
+void buddy_free_blob(struct chunked_blob *blob, size_t _unused)
 {
 	int i;
 	int orders[CHUNKS_COUNT];
@@ -328,3 +329,9 @@ void validate_all_chains(void) {
 		validate_order_chains(i);
 	}
 }
+
+allocation_functions buddy_fns = {
+	.alloc = buddy_allocate_blob,
+	.free = buddy_free_blob,
+	.get_total_allocated_size = buddy_get_total_allocated_size
+};

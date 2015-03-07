@@ -122,7 +122,7 @@ struct chunked_blob *allocate_blob(unsigned size)
 }
 
 
-void free_blob(struct chunked_blob *blob)
+void free_blob(struct chunked_blob *blob, size_t _unused)
 {
 	int i;
 	int orders[CHUNKS_COUNT];
