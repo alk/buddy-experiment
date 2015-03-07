@@ -1,7 +1,10 @@
 
-CFLAGS := -O3 -march=native -ggdb3 -Wall -std=gnu99
+CFLAGS := -O3 -march=native -ggdb3 -Wall -std=gnu99 -Werror
 
-OBJS := main.o buddy-experiment.o jemalloc-adaptor.o mini-adaptor.o dl-adaptor.o chunky-generic.o dl-malloc.o
+LDFLAGS := -ljemalloc
+
+OBJS := main.o buddy-experiment.o jemalloc-adaptor.o mini-adaptor.o dl-adaptor.o \
+	chunky-generic.o dl-malloc.o minimalloc.c
 
 all: buddy-experiment
 
@@ -10,7 +13,7 @@ buddy-experiment: $(OBJS)
 
 dl-malloc.o: CPPFLAGS := -DUSE_DL_PREFIX
 
-# $(OBJS): common.h
+$(OBJS): common.h minimalloc.h Makefile
 
 # buddy-experiment-jm: main.o jemalloc-adaptor.o
 # 	$(CC) -o $@ $(LDFLAGS) $^ -ljemalloc

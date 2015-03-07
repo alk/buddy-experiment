@@ -231,7 +231,7 @@ skip_upper_bound:
 		orders[i] = -1;
 }
 
-struct chunked_blob *buddy_allocate_blob(unsigned size)
+struct chunked_blob *buddy_allocate_blob(size_t size)
 {
 	int i;
 	int orders[CHUNKS_COUNT];
@@ -331,7 +331,7 @@ void validate_all_chains(void) {
 }
 
 allocation_functions buddy_fns = {
-	.alloc = buddy_allocate_blob,
-	.free = buddy_free_blob,
+	.alloc = (void *(*)(size_t))buddy_allocate_blob,
+	.free = (void (*)(void *, size_t))buddy_free_blob,
 	.get_total_allocated_size = buddy_get_total_allocated_size
 };
