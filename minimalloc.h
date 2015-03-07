@@ -1,5 +1,6 @@
 #ifndef MINIMALLOC_H
 #define MINIMALLOC_H
+#include <sys/types.h> // for size_t
 
 struct mini_state;
 
