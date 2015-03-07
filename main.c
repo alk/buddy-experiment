@@ -29,7 +29,7 @@ size_t get_total_allocated_size(void)
 	return main_fns->get_total_allocated_size();
 }
 
-#define ALLOCATE_UNTIL_MB ((900 + 15) / 16 * 16 - 1)
+#define ALLOCATE_UNTIL_MB ((1200 + 15) / 16 * 16 - 1)
 
 static int usefully_allocated;
 static int useful_allocations_count;
@@ -76,9 +76,10 @@ static
 void usage_and_exit(int argc, char **argv)
 {
 	fprintf(stderr,
-		"usage: %s [-m minimal_size] [-r size_range] [-c] "
+		"usage: %s [-m minimal_size] [-r size_range] [-c] [-b]"
 		"[-t allocator] [-n]\n"
 		"\n"
+		"  -b dont do bumps\n"
 		"  -c wrap with chunky allocator\n"
 		"  -n randomize rnd\n"
 		"\n"
@@ -93,25 +94,32 @@ int main(int argc, char **argv)
 {
 	int i;
 	int rv;
+	bool dont_bump = false;
 	bool use_chunky = false;
 	bool randomize = false;
 
-	while ((i = getopt(argc, argv, "m:r:ct:n")) != -1) {
+	while ((i = getopt(argc, argv, "bcm:nr:t:")) != -1) {
 		switch (i) {
+		case 'b':
+			dont_bump = true;
+			break;
+		case 'c':
+			use_chunky = true;
+			break;
 		case 'm':
 			if (!parse_int(&minimal_size, optarg, 128, 2*1024*1024)) {
 				fprintf(stderr, "invalid minimal_size\n");
 				return 1;
 			}
 			break;
+		case 'n':
+			randomize = true;
+			break;
 		case 'r':
 			if (!parse_int(&size_range, optarg, 1, 20*1024*1024)) {
 				fprintf(stderr, "invalid size_range\n");
 				usage_and_exit(argc, argv);
 			}
-			break;
-		case 'c':
-			use_chunky = true;
 			break;
 		case 't':
 			if (strcmp(optarg, "dl") == 0) {
@@ -126,9 +134,6 @@ int main(int argc, char **argv)
 				fprintf(stderr, "invalid type: %s\n", optarg);
 				usage_and_exit(argc, argv);
 			}
-			break;
-		case 'n':
-			randomize = true;
 			break;
 		case '?':
 			fprintf(stderr, "invalid option\n");
@@ -183,7 +188,7 @@ int main(int argc, char **argv)
 			return 1;
 		}
 
-		if ((times % 100000) == 0) {
+		if (!dont_bump && (times % 100000) == 0) {
 			for (int k = 0; k < BLOBS_COUNT; k++) {
 				if (!blobs[k] || sizes[k] > (minimal_size + size_range / 2)) {
 					continue;
@@ -226,4 +231,33 @@ int main(int argc, char **argv)
 	}
 
 	return 0;
+}
+
+
+void *touch_pages(void *_p, size_t size)
+{
+	char *p = _p;
+	char *pend = p + size;
+	do {
+		*p = 0;
+		p += ((~(uintptr_t)p) & 4095) + 1;
+	} while (p < pend);
+	return _p;
+}
+
+size_t rss_allocated(void)
+{
+	unsigned long long dummy, rss_pages = 0;
+	FILE *sm = fopen("/proc/self/statm", "r");
+	if (!sm) {
+		perror("fopen(\"/proc/self/statm\")");
+		abort();
+	}
+	fscanf(sm, "%llu %llu", &dummy, &rss_pages);
+	if (rss_pages == 0) {
+		perror("fscanf");
+		abort();
+	}
+	fclose(sm);
+	return (size_t)rss_pages * 4096;
 }

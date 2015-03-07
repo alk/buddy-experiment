@@ -6,6 +6,7 @@
 
 
 static struct mini_state *ms;
+__attribute__((used))
 static size_t total_allocated;
 
 static
@@ -18,6 +19,7 @@ void *mi_alloc(size_t size)
 		}
 	}
 	void *rv = mini_malloc(ms, size);
+	touch_pages(rv, size);
 	total_allocated += size;
 	return rv;
 }
@@ -33,7 +35,8 @@ void mi_free(void *p, size_t size)
 static
 size_t mi_get_total_allocated_size(void)
 {
-	return total_allocated;
+	/* return total_allocated; */
+	return rss_allocated();
 }
 
 allocation_functions mini_fns = {

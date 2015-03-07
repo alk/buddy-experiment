@@ -10,7 +10,7 @@
 #define MIN_ORDER 5
 /* #define MAX_ORDER 24 */
 
-#define CHUNKS_COUNT 5
+#define CHUNKS_COUNT 7
 
 /*
  * Chunked blob is split into contiguous power of 2 chunks. Up to

@@ -17,4 +17,7 @@ extern allocation_functions mini_fns;
 extern allocation_functions buddy_fns;
 extern allocation_functions dl_fns;
 
+void *touch_pages(void *p, size_t size);
+size_t rss_allocated();
+
 #endif

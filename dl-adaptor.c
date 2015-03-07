@@ -3,12 +3,14 @@
 extern void *dlmalloc(size_t size);
 extern void dlfree(void *);
 
+__attribute__((used))
 static size_t dl_total_allocated;
 
 static
 void *dl_alloc(size_t size)
 {
 	void *rv = dlmalloc(size);
+	touch_pages(rv, size);
 	dl_total_allocated += size;
 	return rv;
 }
@@ -23,7 +25,8 @@ void dl_free(void *p, size_t size)
 static
 size_t dl_get_total_allocated_size(void)
 {
-	return dl_total_allocated;
+	/* return dl_total_allocated; */
+	return rss_allocated();
 }
 
 allocation_functions dl_fns = {
