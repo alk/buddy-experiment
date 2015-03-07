@@ -60,6 +60,44 @@ int minimal_size = 128;
 int size_range = 65536;
 
 static
+void do_simulate_dump(const char *path)
+{
+	typedef struct {
+		uint32_t sec;
+		uint32_t len;
+	} sim_evt_t;
+	sim_evt_t evt;
+	FILE *f;
+	f = fopen(path, "rb");
+	if (!f) {
+		perror("fopen");
+		abort();
+	}
+	while (!feof(f)) {
+		int rv = fread(&evt, sizeof(evt), 1, f);
+		if (rv != 1) {
+			if (rv == 0) {
+				break;
+			}
+			perror("fread");
+			abort();
+		}
+		evt.len *= 32;
+		if (blobs[evt.sec]) {
+			free_blob(blobs[evt.sec], sizes[evt.sec]);
+			usefully_allocated -= sizes[evt.sec];
+			/* fprintf(stderr, "overwritten sec: %llu\n", (unsigned long long)evt.sec); */
+			useful_allocations_count--;
+		}
+		sizes[evt.sec] = evt.len;
+		blobs[evt.sec] = allocate_blob(evt.len);
+		usefully_allocated += evt.len;
+		useful_allocations_count++;
+	}
+	print_current_stats();
+}
+
+static
 int parse_int(int *place, char *arg, int min, int max)
 {
 	char *endptr;
@@ -97,14 +135,18 @@ int main(int argc, char **argv)
 	bool dont_bump = false;
 	bool use_chunky = false;
 	bool randomize = false;
+	const char *read_dump = NULL;
 
-	while ((i = getopt(argc, argv, "bcm:nr:t:")) != -1) {
+	while ((i = getopt(argc, argv, "bcd:m:nr:t:")) != -1) {
 		switch (i) {
 		case 'b':
 			dont_bump = true;
 			break;
 		case 'c':
 			use_chunky = true;
+			break;
+		case 'd':
+			read_dump = optarg;
 			break;
 		case 'm':
 			if (!parse_int(&minimal_size, optarg, 128, 2*1024*1024)) {
@@ -153,6 +195,11 @@ int main(int argc, char **argv)
 
 	printf("minimal_size = %d\n", minimal_size);
 	printf("size_range = %d\n", size_range);
+
+	if (read_dump) {
+		do_simulate_dump(read_dump);
+		return 0;
+	}
 
 	if (randomize) {
 		struct timeval tv;
