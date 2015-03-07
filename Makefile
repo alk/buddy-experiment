@@ -1,5 +1,5 @@
 
-CFLAGS := -O3 -march=native -ggdb3 -Wall -std=gnu99 -Werror
+CFLAGS := -O0 -march=native -ggdb3 -Wall -std=gnu99 -Werror
 
 LDFLAGS := -ljemalloc
 

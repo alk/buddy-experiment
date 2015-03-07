@@ -111,9 +111,10 @@ struct chunked_blob *chunky_allocate_blob(size_t size)
 	int i;
 	int orders[CHUNKS_COUNT];
 	struct chunked_blob *blob;
-	value_size_to_block_sizes(size, orders);
 	unsigned allocated;
 	unsigned subsize;
+
+	value_size_to_block_sizes(size, orders);
 
 	blob = chunky_xmalloc(subsize = (1U << (orders[0])));
 	allocated = subsize;

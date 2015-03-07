@@ -72,6 +72,21 @@ int parse_int(int *place, char *arg, int min, int max)
 	return 1;
 }
 
+static
+void usage_and_exit(int argc, char **argv)
+{
+	fprintf(stderr,
+		"usage: %s [-m minimal_size] [-r size_range] [-c] "
+		"[-t allocator] [-n]\n"
+		"\n"
+		"  -c wrap with chunky allocator\n"
+		"  -n randomize rnd\n"
+		"\n"
+		"Supported allocator types: dl, mini, je, buddy\n",
+		argv[0]);
+	exit(1);
+}
+
 allocation_functions *main_fns = &jemalloc_fns;
 
 int main(int argc, char **argv)
@@ -92,7 +107,7 @@ int main(int argc, char **argv)
 		case 'r':
 			if (!parse_int(&size_range, optarg, 1, 20*1024*1024)) {
 				fprintf(stderr, "invalid size_range\n");
-				return 1;
+				usage_and_exit(argc, argv);
 			}
 			break;
 		case 'c':
@@ -109,7 +124,7 @@ int main(int argc, char **argv)
 				main_fns = &buddy_fns;
 			} else {
 				fprintf(stderr, "invalid type: %s\n", optarg);
-				return 1;
+				usage_and_exit(argc, argv);
 			}
 			break;
 		case 'n':
@@ -117,7 +132,7 @@ int main(int argc, char **argv)
 			break;
 		case '?':
 			fprintf(stderr, "invalid option\n");
-			return 1;
+			usage_and_exit(argc, argv);
 		default:
 			abort();
 		}

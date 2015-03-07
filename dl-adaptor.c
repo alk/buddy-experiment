@@ -27,6 +27,7 @@ size_t dl_get_total_allocated_size(void)
 }
 
 allocation_functions dl_fns = {
+	.name = "dl",
 	.alloc = dl_alloc,
 	.free = dl_free,
 	.get_total_allocated_size = dl_get_total_allocated_size
