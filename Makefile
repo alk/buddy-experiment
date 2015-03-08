@@ -1,7 +1,7 @@
 
-CFLAGS := -O2 -march=native -ggdb3 -Wall -std=gnu99 -Werror
+CFLAGS := -mx32 -O2 -march=native -ggdb3 -Wall -std=gnu99 -Werror
 
-# LDFLAGS := -ljemalloc
+LDFLAGS := -mx32
 
 OBJS := main.o buddy-experiment.o jemalloc-adaptor.o mini-adaptor.o dl-adaptor.o \
 	chunky-generic.o dl-malloc.o minimalloc.o

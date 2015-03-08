@@ -7,10 +7,10 @@
 #include "common.h"
 
 /* 4 is not enough for 64 bit arches */
-#define MIN_ORDER 5
+#define MIN_ORDER 2
 /* #define MAX_ORDER 24 */
 
-#define CHUNKS_COUNT 5
+#define CHUNKS_COUNT 7
 
 /*
  * Chunked blob is split into contiguous power of 2 chunks. Up to
@@ -21,9 +21,16 @@
  * 0 (biggest one) starts right after end of chunked_blob structure
  */
 struct chunked_blob {
-	unsigned size;
 	void *other_chunks[CHUNKS_COUNT-1];
 };
+
+
+__attribute__((constructor))
+static
+void printout_chunked_blob_size(void)
+{
+	fprintf(stderr, "sizeof(struct chunked_blob) = %d\n", sizeof(struct chunked_blob));
+}
 
 static struct chunked_blob *chunky_allocate_blob(size_t);
 static void chunky_free_blob(struct chunked_blob *, size_t);
@@ -87,6 +94,21 @@ skip_upper_bound:
 	}
 	for (;i < CHUNKS_COUNT; i++)
 		orders[i] = -1;
+
+	/* 
+         * {
+	 * 	unsigned total_size = 0;
+	 * 	for (i=0;i < CHUNKS_COUNT; i++) {
+	 * 		int ord = orders[i];
+	 * 		if (ord < 0) {
+	 * 			break;
+	 * 		}
+	 * 		total_size += (1U << ord);
+	 * 	}
+	 * 	size -= sizeof(struct chunked_blob);
+	 * 	fprintf(stderr, "%g\tsize: %u,\ttotal_size: %u\n", total_size * 100.0 / size - 100, size, total_size);
+	 * }
+         */
 }
 
 static
@@ -118,7 +140,7 @@ struct chunked_blob *chunky_allocate_blob(size_t size)
 
 	blob = chunky_xmalloc(subsize = (1U << (orders[0])));
 	allocated = subsize;
-	blob->size = size;
+	/* blob->size = size; */
 
 	for (i = 1; i < CHUNKS_COUNT && orders[i] >= 0; i++) {
 		blob->other_chunks[i-1] = chunky_xmalloc(subsize = (1U << (orders[i])));
@@ -132,11 +154,11 @@ struct chunked_blob *chunky_allocate_blob(size_t size)
 
 
 static
-void chunky_free_blob(struct chunked_blob *blob, size_t dummy)
+void chunky_free_blob(struct chunked_blob *blob, size_t size)
 {
 	int i;
 	int orders[CHUNKS_COUNT];
-	value_size_to_block_sizes(blob->size, orders);
+	value_size_to_block_sizes(size, orders);
 
 	for (i = CHUNKS_COUNT-1; i > 0; i--) {
 		if (orders[i] < 0)

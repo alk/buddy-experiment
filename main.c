@@ -60,7 +60,35 @@ int minimal_size = 128;
 int size_range = 65536;
 
 static
-void do_simulate_dump(const char *path)
+void bump_sizes(void)
+{
+	for (int k = 0; k < BLOBS_COUNT; k++) {
+		if (!blobs[k] || sizes[k] > (minimal_size + size_range / 2)) {
+			continue;
+		}
+		unsigned old_size = sizes[k];
+		unsigned new_size = old_size + (old_size >> 8);
+		if (new_size > minimal_size + size_range) {
+			new_size = minimal_size + size_range;
+		}
+		if (new_size == old_size) {
+			continue;
+		}
+		free_blob(blobs[k], sizes[k]);
+		blobs[k] = 0;
+		usefully_allocated -= old_size;
+		useful_allocations_count--;
+		if (usefully_allocated < (ALLOCATE_UNTIL_MB * 1048576)) {
+			blobs[k] = allocate_blob(new_size);
+			sizes[k] = new_size;
+			usefully_allocated += new_size;
+			useful_allocations_count++;
+		}
+	}
+}
+
+static
+void do_simulate_dump(const char *path, bool dont_bump)
 {
 	typedef struct {
 		uint32_t sec;
@@ -82,7 +110,7 @@ void do_simulate_dump(const char *path)
 			perror("fread");
 			abort();
 		}
-		evt.len *= 32;
+		evt.len *= 64;
 		if (blobs[evt.sec]) {
 			free_blob(blobs[evt.sec], sizes[evt.sec]);
 			usefully_allocated -= sizes[evt.sec];
@@ -93,6 +121,10 @@ void do_simulate_dump(const char *path)
 		blobs[evt.sec] = allocate_blob(evt.len);
 		usefully_allocated += evt.len;
 		useful_allocations_count++;
+	}
+	print_current_stats();
+	if (!dont_bump) {
+		bump_sizes();
 	}
 	print_current_stats();
 }
@@ -197,7 +229,7 @@ int main(int argc, char **argv)
 	printf("size_range = %d\n", size_range);
 
 	if (read_dump) {
-		do_simulate_dump(read_dump);
+		do_simulate_dump(read_dump, dont_bump);
 		return 0;
 	}
 
@@ -236,29 +268,7 @@ int main(int argc, char **argv)
 		}
 
 		if (!dont_bump && (times % 100000) == 0) {
-			for (int k = 0; k < BLOBS_COUNT; k++) {
-				if (!blobs[k] || sizes[k] > (minimal_size + size_range / 2)) {
-					continue;
-				}
-				unsigned old_size = sizes[k];
-				unsigned new_size = old_size + (old_size >> 2);
-				if (new_size > minimal_size + size_range) {
-					new_size = minimal_size + size_range;
-				}
-				if (new_size == old_size) {
-					continue;
-				}
-				free_blob(blobs[k], sizes[k]);
-				blobs[k] = 0;
-				usefully_allocated -= old_size;
-				useful_allocations_count--;
-				if (usefully_allocated < (ALLOCATE_UNTIL_MB * 1048576)) {
-					blobs[k] = allocate_blob(new_size);
-					sizes[k] = new_size;
-					usefully_allocated += new_size;
-					useful_allocations_count++;
-				}
-			}
+			bump_sizes();
 		}
 
 		if ((times % 100000) == 0) {

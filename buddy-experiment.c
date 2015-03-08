@@ -161,7 +161,7 @@ void free_block(void *ptr, int order)
 	enqueue_free(p, order);
 }
 
-#define CHUNKS_COUNT 4
+#define CHUNKS_COUNT 5
 
 /*
  * Chunked blob is split into contiguous power of 2 chunks. Up to
