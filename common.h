@@ -7,6 +7,8 @@ typedef struct {
 	void *(*alloc)(size_t);
 	void (*free)(void *, size_t);
 	size_t (*get_total_allocated_size)(void);
+	void (*iterate_chunks)(void *p, size_t size, void *data,
+			       void (*cb)(void *p, size_t s, void *data));
 } allocation_functions;
 
 extern allocation_functions *main_fns;

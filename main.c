@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include "common.h"
 
+static void dump_chunks(const char *path);
 
 static
 void *allocate_blob(unsigned size)
@@ -110,7 +111,10 @@ void do_simulate_dump(const char *path, bool dont_bump)
 			perror("fread");
 			abort();
 		}
-		evt.len *= 64;
+		/* evt.len *= 64; */
+		if (evt.len < 128) {
+			continue;
+		}
 		if (blobs[evt.sec]) {
 			free_blob(blobs[evt.sec], sizes[evt.sec]);
 			usefully_allocated -= sizes[evt.sec];
@@ -158,7 +162,7 @@ void usage_and_exit(int argc, char **argv)
 	exit(1);
 }
 
-allocation_functions *main_fns = &jemalloc_fns;
+allocation_functions *main_fns = &dl_fns;
 
 int main(int argc, char **argv)
 {
@@ -168,8 +172,9 @@ int main(int argc, char **argv)
 	bool use_chunky = false;
 	bool randomize = false;
 	const char *read_dump = NULL;
+	const char *dump_first_path = NULL;
 
-	while ((i = getopt(argc, argv, "bcd:m:nr:t:")) != -1) {
+	while ((i = getopt(argc, argv, "bcd:m:np:r:t:")) != -1) {
 		switch (i) {
 		case 'b':
 			dont_bump = true;
@@ -188,6 +193,9 @@ int main(int argc, char **argv)
 			break;
 		case 'n':
 			randomize = true;
+			break;
+		case 'p':
+			dump_first_path = optarg;
 			break;
 		case 'r':
 			if (!parse_int(&size_range, optarg, 1, 20*1024*1024)) {
@@ -268,11 +276,15 @@ int main(int argc, char **argv)
 		}
 
 		if (!dont_bump && (times % 100000) == 0) {
+			if (dump_first_path) {
+				dump_chunks(dump_first_path);
+				dump_first_path = NULL;
+			}
 			bump_sizes();
 		}
 
 		if ((times % 100000) == 0) {
-			printf("stats:\n");
+			printf("stats (%d):\n", times);
 			print_current_stats();
 			printf("\n\n");
 		}
@@ -317,4 +329,56 @@ size_t rss_allocated(void)
 	}
 	fclose(sm);
 	return (size_t)rss_pages * 4096;
+}
+
+static FILE *diagnose_file;
+
+static
+void diagnose_cb(void *ptr, size_t sz, void *dummy)
+{
+	fprintf(diagnose_file, "%016llx %llx\n", (unsigned long long)(uintptr_t)ptr, (unsigned long long)sz);
+}
+
+static
+void dump_chunks(const char *path)
+{
+	int i;
+	if (!main_fns->iterate_chunks) {
+		return;
+	}
+	diagnose_file = fopen(path, "w");
+	for (i = 0; i < BLOBS_COUNT; i++) {
+		if (!blobs[i]) {
+			continue;
+		}
+		main_fns->iterate_chunks(blobs[i], sizes[i], NULL, diagnose_cb);
+	}
+	fclose(diagnose_file);
+}
+
+static
+void diagnose_and_exit(void)
+{
+	dump_chunks("diag_file");
+	abort();
+}
+
+static
+intptr_t total_increment;
+
+void *aasbrk(intptr_t increment)
+{
+	extern void * __sbrk(intptr_t);
+	total_increment += increment;
+	if (total_increment >= 1484034048) {
+		fprintf(stderr, "last increment: %lld\n", (unsigned long long)increment);
+		diagnose_and_exit();
+	}
+	return __sbrk(increment);
+}
+
+static __attribute__((destructor))
+void print_ti(void)
+{
+	fprintf(stderr, "total_increment: %lld\n", (unsigned long long)total_increment);
 }

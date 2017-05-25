@@ -10,7 +10,7 @@
 #define MIN_ORDER 2
 /* #define MAX_ORDER 24 */
 
-#define CHUNKS_COUNT 7
+#define CHUNKS_COUNT 4
 
 /*
  * Chunked blob is split into contiguous power of 2 chunks. Up to
@@ -29,18 +29,22 @@ __attribute__((constructor))
 static
 void printout_chunked_blob_size(void)
 {
-	fprintf(stderr, "sizeof(struct chunked_blob) = %d\n", sizeof(struct chunked_blob));
+	fprintf(stderr, "sizeof(struct chunked_blob) = %lu\n", (unsigned long)sizeof(struct chunked_blob));
 }
 
 static struct chunked_blob *chunky_allocate_blob(size_t);
 static void chunky_free_blob(struct chunked_blob *, size_t);
 static size_t chunky_get_total_allocated_size(void);
+static void chunky_iterate_chunks(void *_blob, size_t s, void *data,
+				  void (*cb)(void *p, size_t s, void *data));
+
 
 allocation_functions chunky_fns = {
 	.name = "chunky_generic:",
 	.alloc = (void *(*)(size_t))chunky_allocate_blob,
 	.free = (void (*)(void *, size_t))chunky_free_blob,
-	.get_total_allocated_size = chunky_get_total_allocated_size
+	.get_total_allocated_size = chunky_get_total_allocated_size,
+	.iterate_chunks = chunky_iterate_chunks
 };
 
 allocation_functions *chunky_slave_fns;
@@ -172,4 +176,21 @@ static
 size_t chunky_get_total_allocated_size(void)
 {
 	return chunky_slave_fns->get_total_allocated_size();
+}
+
+static
+void chunky_iterate_chunks(void *_blob, size_t size, void *data,
+			   void (*cb)(void *p, size_t s, void *data))
+{
+	struct chunked_blob *blob = _blob;
+	int i;
+	int orders[CHUNKS_COUNT];
+	value_size_to_block_sizes(size, orders);
+
+	for (i = CHUNKS_COUNT-1; i > 0; i--) {
+		if (orders[i] < 0)
+			continue;
+		cb(blob->other_chunks[i-1], 1U << orders[i], data);
+	}
+	cb(blob, 1U << orders[0], data);
 }
